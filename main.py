@@ -1,32 +1,48 @@
-import telebot
-from web3 import Web3
+import os
+import asyncio
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
+import httpx
 
-# --- اطلاعات خصوصی ---
-TOKEN = "7988601127:AAFXcCLC94rdXTMNQ_YudTL0VqPBjuhdQ1w"
-CHAT_ID = "256764836"
-PRIVATE_KEY = "b2038d5efe463048a9d44ea612c6e3d36d493437ae242a00813e16f892c69e65"
-WALLET_ADDRESS = "0xD15fBdba08e12C865c37751F57D3F936d56fd2d8"
+app = FastAPI()
 
-# --- اتصال به تلگرام ---
-bot = telebot.TeleBot(TOKEN)
+TELEGRAM_BOT_TOKEN = "7988601127:AAFXcCLC94rdXTMNQ_YudTL0VqPBjuhdQ1w"
+TELEGRAM_CHAT_ID = "256764836"
+ESSAN_API_URL = "http://localhost:8001/analyze"
 
-# --- اتصال به شبکه بلاک‌چین (مثلاً BSC) ---
-RPC_URL = "https://bsc-dataseed.binance.org/"
-web3 = Web3(Web3.HTTPProvider(RPC_URL))
+class TelegramUpdate(BaseModel):
+    message: dict
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, "✅ ربات فعال شد و آماده دریافت دستورات است!")
+@app.get("/")
+async def root():
+    return {"message": "EssanBot backend running"}
 
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    if message.text.lower() in ["سلام", "hi", "hello"]:
-        bot.reply_to(message, "سلام! من ربات شکارچی توکن هستم، آماده‌ام!")
-    elif "کیف پول" in message.text:
-        bot.send_message(message.chat.id, f"🏦 آدرس کیف پول: `{WALLET_ADDRESS}`", parse_mode="Markdown")
-    else:
-        bot.send_message(message.chat.id, "پیامت دریافت شد! ✌️")
+@app.post("/")
+async def telegram_webhook(update: TelegramUpdate):
+    user_message = update.message.get("text", "").lower()
 
-bot.send_message(CHAT_ID, "🤖 ربات راه‌اندازی شد!")
+    if "سلام" in user_message or "start" in user_message:
+        await send_message("درود! بات فعال است و آماده دریافت پیام‌هاست ✅")
+        return {"ok": True}
 
-bot.polling()
+    if "وضعیت" in user_message:
+        await send_message("بات آنلاین است و به‌درستی کار می‌کند ✅")
+        return {"ok": True}
+
+    # ارسال پیام به ماژول تحلیلگر
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(ESSAN_API_URL, json={"text": user_message})
+            result = res.json()
+            response = result.get("response", "پاسخی دریافت نشد ❌")
+            await send_message(response)
+    except Exception as e:
+        await send_message(f"❌ خطا در ارتباط با ماژول تحلیلگر: {str(e)}")
+
+    return {"ok": True}
+
+async def send_message(text: str):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
+    async with httpx.AsyncClient() as client:
+        await client.post(url, json=payload)
