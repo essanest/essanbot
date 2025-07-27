@@ -1,8 +1,13 @@
 services:
   - type: web
-    name: essanbot
-    env: python
-    plan: free
+    name: essanbot-server
+    runtime: python
+    repo: https://github.com/username/essanbot  # ← جایگزین کن با آدرس گیت‌هاب خودت
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    autoDeploy: true
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 7988601127:AAFXcCLC94rdXTMNQ_YudTL0VqPBjuhdQ1w
+      - key: TELEGRAM_CHAT_ID
+        value: 256764836
